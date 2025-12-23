@@ -35,7 +35,7 @@ function App() {
     stream,
     audioContext,
     analyserNode,
-    sourceNode,
+    gainNode,
     start,
     stop,
     setGain,
@@ -48,7 +48,7 @@ function App() {
 
   // Detection hooks
   const { frequency, noteInfo } = usePitchDetection(analyserNode, isActive);
-  const bpmInfo = useBpmDetection(audioContext, sourceNode, isActive);
+  const bpmInfo = useBpmDetection(audioContext, gainNode, isActive);
   const keyInfo = useKeyDetection(analyserNode, isActive);
   const { chord: chordInfo } = useChordDetection(analyserNode, isActive);
 

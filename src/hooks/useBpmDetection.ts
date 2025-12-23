@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   createRealtimeBpmAnalyzer,
+  getBiquadFilter,
   type BpmAnalyzer,
 } from 'realtime-bpm-analyzer';
 import type { BpmInfo } from '../types/audio';
 
 export function useBpmDetection(
   audioContext: AudioContext | null,
-  sourceNode: MediaStreamAudioSourceNode | null,
+  gainNode: GainNode | null,
   isActive: boolean
 ): BpmInfo {
   const [bpmInfo, setBpmInfo] = useState<BpmInfo>({
@@ -28,7 +29,7 @@ export function useBpmDetection(
   }, []);
 
   useEffect(() => {
-    if (!audioContext || !sourceNode || !isActive) {
+    if (!audioContext || !gainNode || !isActive) {
       cleanup();
       return;
     }
@@ -56,10 +57,16 @@ export function useBpmDetection(
 
         analyzerRef.current = bpmAnalyzer;
 
-        // Connect source to analyzer's node
-        sourceNode.connect(bpmAnalyzer.node);
+        // Create lowpass filter to isolate bass frequencies (better for beat detection)
+        const lowpassFilter = getBiquadFilter(audioContext, {
+          frequencyValue: 150,
+        });
 
-        // Listen for BPM events using the event emitter
+        // Connect: gainNode → lowpassFilter → bpmAnalyzer.node
+        gainNode.connect(lowpassFilter);
+        lowpassFilter.connect(bpmAnalyzer.node);
+
+        // Listen for BPM events
         bpmAnalyzer.on('bpm', (data) => {
           if (!isMounted) return;
 
@@ -96,7 +103,7 @@ export function useBpmDetection(
       isMounted = false;
       cleanup();
     };
-  }, [audioContext, sourceNode, isActive, cleanup]);
+  }, [audioContext, gainNode, isActive, cleanup]);
 
   return bpmInfo;
 }

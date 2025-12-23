@@ -3,7 +3,8 @@ import type { KeyInfo } from '../types/audio';
 
 // Essentia types
 type EssentiaInstance = {
-  KeyExtractor: (signal: Float32Array) => { key: string; scale: string; strength: number };
+  KeyExtractor: (signal: unknown) => { key: string; scale: string; strength: number };
+  arrayToVector: (array: Float32Array) => unknown;
 };
 
 // Dynamic import for Essentia
@@ -77,7 +78,9 @@ export function useKeyDetection(
       }
 
       // Analyze key using Essentia
-      const result = essentiaRef.current.KeyExtractor(combinedBuffer);
+      // Convert Float32Array to VectorFloat (required by Essentia.js WASM bindings)
+      const vectorBuffer = essentiaRef.current.arrayToVector(combinedBuffer);
+      const result = essentiaRef.current.KeyExtractor(vectorBuffer);
 
       if (result && result.key) {
         setKeyInfo({
