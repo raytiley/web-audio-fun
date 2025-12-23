@@ -110,7 +110,7 @@ function App() {
         <p>
           Built with React + Web Audio API •{' '}
           <a
-            href="https://github.com"
+            href="https://github.com/raytiley/web-audio-fun"
             target="_blank"
             rel="noopener noreferrer"
           >
