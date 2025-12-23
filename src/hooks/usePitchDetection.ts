@@ -8,6 +8,11 @@ interface PitchDetectionResult {
   noteInfo: NoteInfo | null;
 }
 
+// Smoothing configuration
+const EMA_ALPHA = 0.3; // Weight for new frequency (0.3 new, 0.7 old)
+const NOTE_STABILITY_FRAMES = 3; // Require 3 consecutive frames of same note
+const UPDATE_INTERVAL_MS = 100; // Minimum 100ms between state updates (~10/sec)
+
 export function usePitchDetection(
   analyserNode: AnalyserNode | null,
   isActive: boolean
@@ -21,9 +26,20 @@ export function usePitchDetection(
   const bufferRef = useRef<Float32Array | null>(null);
   const rafIdRef = useRef<number | null>(null);
 
+  // Smoothing state refs
+  const smoothedFrequencyRef = useRef<number | null>(null);
+  const lastNoteRef = useRef<string | null>(null);
+  const noteConsecutiveCountRef = useRef<number>(0);
+  const lastUpdateTimeRef = useRef<number>(0);
+
   useEffect(() => {
     if (!analyserNode || !isActive) {
       setResult({ frequency: null, noteInfo: null });
+      // Reset smoothing state
+      smoothedFrequencyRef.current = null;
+      lastNoteRef.current = null;
+      noteConsecutiveCountRef.current = 0;
+      lastUpdateTimeRef.current = 0;
       return;
     }
 
@@ -50,18 +66,68 @@ export function usePitchDetection(
       }
       const rms = Math.sqrt(sum / bufferRef.current.length);
 
+      const now = performance.now();
+      const timeSinceLastUpdate = now - lastUpdateTimeRef.current;
+
       // Only detect pitch if signal is above threshold
       if (rms > 0.01) {
-        const frequency = detectPitchRef.current(bufferRef.current);
+        const rawFrequency = detectPitchRef.current(bufferRef.current);
 
-        if (frequency !== null && frequency > 20 && frequency < 20000) {
-          const noteInfo = frequencyToNote(frequency);
-          setResult({ frequency, noteInfo });
+        if (rawFrequency !== null && rawFrequency > 20 && rawFrequency < 20000) {
+          // Apply Exponential Moving Average to smooth frequency
+          if (smoothedFrequencyRef.current === null) {
+            smoothedFrequencyRef.current = rawFrequency;
+          } else {
+            smoothedFrequencyRef.current =
+              smoothedFrequencyRef.current * (1 - EMA_ALPHA) +
+              rawFrequency * EMA_ALPHA;
+          }
+
+          const noteInfo = frequencyToNote(smoothedFrequencyRef.current);
+          if (!noteInfo) {
+            // frequencyToNote returned null, skip this frame
+            rafIdRef.current = requestAnimationFrame(detectPitch);
+            return;
+          }
+          const currentNote = noteInfo.note + noteInfo.octave;
+
+          // Note hysteresis: track consecutive frames of same note
+          if (currentNote === lastNoteRef.current) {
+            noteConsecutiveCountRef.current++;
+          } else {
+            noteConsecutiveCountRef.current = 1;
+            lastNoteRef.current = currentNote;
+          }
+
+          // Only update state if:
+          // 1. Enough time has passed since last update
+          // 2. Note has been stable for enough frames
+          if (
+            timeSinceLastUpdate >= UPDATE_INTERVAL_MS &&
+            noteConsecutiveCountRef.current >= NOTE_STABILITY_FRAMES
+          ) {
+            setResult({ frequency: smoothedFrequencyRef.current, noteInfo });
+            lastUpdateTimeRef.current = now;
+          }
         } else {
-          setResult({ frequency: null, noteInfo: null });
+          // No valid frequency detected
+          if (timeSinceLastUpdate >= UPDATE_INTERVAL_MS) {
+            setResult({ frequency: null, noteInfo: null });
+            lastUpdateTimeRef.current = now;
+            smoothedFrequencyRef.current = null;
+            lastNoteRef.current = null;
+            noteConsecutiveCountRef.current = 0;
+          }
         }
       } else {
-        setResult({ frequency: null, noteInfo: null });
+        // Signal too weak
+        if (timeSinceLastUpdate >= UPDATE_INTERVAL_MS) {
+          setResult({ frequency: null, noteInfo: null });
+          lastUpdateTimeRef.current = now;
+          smoothedFrequencyRef.current = null;
+          lastNoteRef.current = null;
+          noteConsecutiveCountRef.current = 0;
+        }
       }
 
       rafIdRef.current = requestAnimationFrame(detectPitch);
