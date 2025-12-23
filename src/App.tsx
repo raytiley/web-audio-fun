@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useAudioInput } from './hooks/useAudioInput';
 import { usePitchDetection } from './hooks/usePitchDetection';
 import { useBpmDetection } from './hooks/useBpmDetection';
@@ -12,10 +13,14 @@ import { BpmDisplay } from './components/BpmDisplay';
 import { KeyDisplay } from './components/KeyDisplay';
 import { RecordingControls } from './components/RecordingControls';
 import { HistoryPanel } from './components/HistoryPanel';
+import { HowItWorks } from './components/HowItWorks';
 
 import styles from './App.module.css';
 
+type Tab = 'app' | 'how-it-works';
+
 function App() {
+  const [activeTab, setActiveTab] = useState<Tab>('app');
   // Audio input
   const {
     isActive,
@@ -52,58 +57,78 @@ function App() {
         <p className={styles.subtitle}>
           Real-time audio analysis in the browser
         </p>
+        <nav className={styles.tabs}>
+          <button
+            className={`${styles.tab} ${activeTab === 'app' ? styles.tabActive : ''}`}
+            onClick={() => setActiveTab('app')}
+          >
+            App
+          </button>
+          <button
+            className={`${styles.tab} ${activeTab === 'how-it-works' ? styles.tabActive : ''}`}
+            onClick={() => setActiveTab('how-it-works')}
+          >
+            How it Works
+          </button>
+        </nav>
       </header>
 
       <main className={styles.main}>
-        <section className={styles.controls}>
-          <StartButton
-            isActive={isActive}
-            isLoading={isLoading}
-            error={error}
-            onStart={start}
-            onStop={stop}
-          />
-        </section>
-
-        {isActive && (
+        {activeTab === 'app' && (
           <>
-            <section className={styles.visualizer}>
-              <AudioVisualizer analyserNode={analyserNode} isActive={isActive} />
-            </section>
-
-            <section className={styles.detectors}>
-              <NoteDisplay noteInfo={noteInfo} frequency={frequency} />
-              <BpmDisplay bpmInfo={bpmInfo} />
-              <KeyDisplay
-                keyInfo={keyInfo}
-                isLoading={keyInfo.isLoading}
-                error={keyInfo.error}
+            <section className={styles.controls}>
+              <StartButton
+                isActive={isActive}
+                isLoading={isLoading}
+                error={error}
+                onStart={start}
+                onStop={stop}
               />
             </section>
 
-            <section className={styles.extras}>
-              <RecordingControls
-                isRecording={recorder.isRecording}
-                audioUrl={recorder.audioUrl}
-                duration={recorder.duration}
-                onStartRecording={recorder.startRecording}
-                onStopRecording={recorder.stopRecording}
-                onClearRecording={recorder.clearRecording}
-                onDownloadRecording={recorder.downloadRecording}
-              />
-              <HistoryPanel history={history} onClear={clearHistory} />
-            </section>
+            {isActive && (
+              <>
+                <section className={styles.visualizer}>
+                  <AudioVisualizer analyserNode={analyserNode} isActive={isActive} />
+                </section>
+
+                <section className={styles.detectors}>
+                  <NoteDisplay noteInfo={noteInfo} frequency={frequency} />
+                  <BpmDisplay bpmInfo={bpmInfo} />
+                  <KeyDisplay
+                    keyInfo={keyInfo}
+                    isLoading={keyInfo.isLoading}
+                    error={keyInfo.error}
+                  />
+                </section>
+
+                <section className={styles.extras}>
+                  <RecordingControls
+                    isRecording={recorder.isRecording}
+                    audioUrl={recorder.audioUrl}
+                    duration={recorder.duration}
+                    onStartRecording={recorder.startRecording}
+                    onStopRecording={recorder.stopRecording}
+                    onClearRecording={recorder.clearRecording}
+                    onDownloadRecording={recorder.downloadRecording}
+                  />
+                  <HistoryPanel history={history} onClear={clearHistory} />
+                </section>
+              </>
+            )}
+
+            {!isActive && !isLoading && (
+              <section className={styles.instructions}>
+                <p>Click "Start Listening" to begin audio analysis.</p>
+                <p className={styles.note}>
+                  Requires microphone permission. Works best in Chrome or Firefox.
+                </p>
+              </section>
+            )}
           </>
         )}
 
-        {!isActive && !isLoading && (
-          <section className={styles.instructions}>
-            <p>Click "Start Listening" to begin audio analysis.</p>
-            <p className={styles.note}>
-              Requires microphone permission. Works best in Chrome or Firefox.
-            </p>
-          </section>
-        )}
+        {activeTab === 'how-it-works' && <HowItWorks />}
       </main>
 
       <footer className={styles.footer}>
