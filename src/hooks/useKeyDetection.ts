@@ -136,7 +136,7 @@ export function useKeyDetection(
         }
         const rms = Math.sqrt(sum / buffer.length);
 
-        if (rms > 0.01) {
+        if (rms > 0.005) {
           audioBufferRef.current.push(new Float32Array(buffer));
 
           // Keep buffer limited

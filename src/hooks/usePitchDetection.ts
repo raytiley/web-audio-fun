@@ -70,7 +70,7 @@ export function usePitchDetection(
       const timeSinceLastUpdate = now - lastUpdateTimeRef.current;
 
       // Only detect pitch if signal is above threshold
-      if (rms > 0.01) {
+      if (rms > 0.005) {
         const rawFrequency = detectPitchRef.current(bufferRef.current);
 
         if (rawFrequency !== null && rawFrequency > 20 && rawFrequency < 20000) {

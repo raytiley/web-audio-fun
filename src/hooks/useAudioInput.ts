@@ -12,10 +12,12 @@ export function useAudioInput() {
     audioContext: null,
     analyserNode: null,
     sourceNode: null,
+    gainNode: null,
   });
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
 
   const start = useCallback(async () => {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
@@ -38,13 +40,21 @@ export function useAudioInput() {
       analyserNode.fftSize = ANALYSER_FFT_SIZE;
       analyserNode.smoothingTimeConstant = 0.8;
 
+      // Create gain node for sensitivity control
+      const gainNode = audioContext.createGain();
+      gainNode.gain.value = 1.0; // Default gain
+
       // Create source from stream
       const sourceNode = audioContext.createMediaStreamSource(stream);
-      sourceNode.connect(analyserNode);
+
+      // Connect: source → gain → analyser
+      sourceNode.connect(gainNode);
+      gainNode.connect(analyserNode);
 
       // Store refs for cleanup
       audioContextRef.current = audioContext;
       streamRef.current = stream;
+      gainNodeRef.current = gainNode;
 
       setState({
         isActive: true,
@@ -54,6 +64,7 @@ export function useAudioInput() {
         audioContext,
         analyserNode,
         sourceNode,
+        gainNode,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to access microphone';
@@ -78,6 +89,8 @@ export function useAudioInput() {
       audioContextRef.current = null;
     }
 
+    gainNodeRef.current = null;
+
     setState({
       isActive: false,
       isLoading: false,
@@ -86,7 +99,16 @@ export function useAudioInput() {
       audioContext: null,
       analyserNode: null,
       sourceNode: null,
+      gainNode: null,
     });
+  }, []);
+
+  const setGain = useCallback((value: number) => {
+    if (gainNodeRef.current) {
+      // Clamp value between 0.5 and 5.0
+      const clampedValue = Math.max(0.5, Math.min(5.0, value));
+      gainNodeRef.current.gain.value = clampedValue;
+    }
   }, []);
 
   // Cleanup on unmount
@@ -105,5 +127,6 @@ export function useAudioInput() {
     ...state,
     start,
     stop,
+    setGain,
   };
 }

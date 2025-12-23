@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAudioInput } from './hooks/useAudioInput';
 import { usePitchDetection } from './hooks/usePitchDetection';
 import { useBpmDetection } from './hooks/useBpmDetection';
 import { useKeyDetection } from './hooks/useKeyDetection';
+import { useChordDetection } from './hooks/useChordDetection';
 import { useRecorder } from './hooks/useRecorder';
 import { useDetectionHistory } from './hooks/useDetectionHistory';
 
@@ -11,9 +12,12 @@ import { AudioVisualizer } from './components/AudioVisualizer';
 import { NoteDisplay } from './components/NoteDisplay';
 import { BpmDisplay } from './components/BpmDisplay';
 import { KeyDisplay } from './components/KeyDisplay';
+import { ChordDisplay } from './components/ChordDisplay';
 import { RecordingControls } from './components/RecordingControls';
 import { HistoryPanel } from './components/HistoryPanel';
 import { HowItWorks } from './components/HowItWorks';
+import { SensitivitySlider } from './components/SensitivitySlider';
+import { InputLevel } from './components/InputLevel';
 
 import styles from './App.module.css';
 
@@ -21,6 +25,8 @@ type Tab = 'app' | 'how-it-works';
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('app');
+  const [sensitivity, setSensitivity] = useState(1.0);
+
   // Audio input
   const {
     isActive,
@@ -32,12 +38,19 @@ function App() {
     sourceNode,
     start,
     stop,
+    setGain,
   } = useAudioInput();
+
+  // Update gain when sensitivity changes
+  useEffect(() => {
+    setGain(sensitivity);
+  }, [sensitivity, setGain]);
 
   // Detection hooks
   const { frequency, noteInfo } = usePitchDetection(analyserNode, isActive);
   const bpmInfo = useBpmDetection(audioContext, sourceNode, isActive);
   const keyInfo = useKeyDetection(analyserNode, isActive);
+  const { chord: chordInfo } = useChordDetection(analyserNode, isActive);
 
   // Recording
   const recorder = useRecorder(stream);
@@ -84,6 +97,12 @@ function App() {
                 onStart={start}
                 onStop={stop}
               />
+              {isActive && (
+                <div className={styles.inputControls}>
+                  <SensitivitySlider value={sensitivity} onChange={setSensitivity} />
+                  <InputLevel analyserNode={analyserNode} isActive={isActive} />
+                </div>
+              )}
             </section>
 
             {isActive && (
@@ -94,6 +113,7 @@ function App() {
 
                 <section className={styles.detectors}>
                   <NoteDisplay noteInfo={noteInfo} frequency={frequency} />
+                  <ChordDisplay chord={chordInfo} />
                   <BpmDisplay bpmInfo={bpmInfo} />
                   <KeyDisplay
                     keyInfo={keyInfo}

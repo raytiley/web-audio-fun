@@ -16,6 +16,25 @@ export interface KeyInfo {
   strength: number;
 }
 
+export type ChordQuality =
+  | 'major'
+  | 'minor'
+  | '7'
+  | 'maj7'
+  | 'm7'
+  | 'sus2'
+  | 'sus4'
+  | 'dim'
+  | 'aug';
+
+export interface ChordInfo {
+  root: string;
+  quality: ChordQuality;
+  name: string;
+  confidence: number;
+  notes: string[];
+}
+
 export interface DetectionEvent {
   timestamp: number;
   note: NoteInfo | null;
@@ -31,6 +50,7 @@ export interface AudioInputState {
   audioContext: AudioContext | null;
   analyserNode: AnalyserNode | null;
   sourceNode: MediaStreamAudioSourceNode | null;
+  gainNode: GainNode | null;
 }
 
 export interface RecorderState {
