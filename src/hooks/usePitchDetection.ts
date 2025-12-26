@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { YIN } from 'pitchfinder';
+import { Macleod } from 'pitchfinder';
 import { frequencyToNote } from '../utils/noteHelpers';
 import type { NoteInfo } from '../types/audio';
 
@@ -9,9 +9,10 @@ interface PitchDetectionResult {
 }
 
 // Smoothing configuration
-const EMA_ALPHA = 0.3; // Weight for new frequency (0.3 new, 0.7 old)
-const NOTE_STABILITY_FRAMES = 3; // Require 3 consecutive frames of same note
+const EMA_ALPHA = 0.2; // Weight for new frequency (0.2 new, 0.8 old) - slower for stability
+const NOTE_STABILITY_FRAMES = 4; // Require 4 consecutive frames of same note
 const UPDATE_INTERVAL_MS = 100; // Minimum 100ms between state updates (~10/sec)
+const MIN_PITCH_PROBABILITY = 0.8; // Reject low-confidence detections
 
 export function usePitchDetection(
   analyserNode: AnalyserNode | null,
@@ -22,7 +23,7 @@ export function usePitchDetection(
     noteInfo: null,
   });
 
-  const detectPitchRef = useRef<ReturnType<typeof YIN> | null>(null);
+  const detectPitchRef = useRef<ReturnType<typeof Macleod> | null>(null);
   const bufferRef = useRef<Float32Array | null>(null);
   const rafIdRef = useRef<number | null>(null);
 
@@ -43,12 +44,16 @@ export function usePitchDetection(
       return;
     }
 
-    // Initialize pitch detector
+    // Initialize pitch detector with McLeod (MPM) algorithm
     const sampleRate = analyserNode.context.sampleRate;
-    detectPitchRef.current = YIN({ sampleRate });
+    const bufferLength = analyserNode.fftSize;
+    detectPitchRef.current = Macleod({
+      sampleRate,
+      bufferSize: bufferLength,
+      cutoff: 0.93, // Tartini default - prefer fundamental over harmonics
+    });
 
     // Create buffer for audio data
-    const bufferLength = analyserNode.fftSize;
     bufferRef.current = new Float32Array(bufferLength);
 
     const detectPitch = () => {
@@ -71,9 +76,12 @@ export function usePitchDetection(
 
       // Only detect pitch if signal is above threshold
       if (rms > 0.005) {
-        const rawFrequency = detectPitchRef.current(bufferRef.current);
+        const result = detectPitchRef.current(bufferRef.current);
+        const rawFrequency = result.freq;
+        const probability = result.probability;
 
-        if (rawFrequency !== null && rawFrequency > 20 && rawFrequency < 20000) {
+        // Filter by probability and guitar+voice frequency range (70Hz to 2000Hz)
+        if (rawFrequency > 0 && rawFrequency > 70 && rawFrequency < 2000 && probability > MIN_PITCH_PROBABILITY) {
           // Apply Exponential Moving Average to smooth frequency
           if (smoothedFrequencyRef.current === null) {
             smoothedFrequencyRef.current = rawFrequency;

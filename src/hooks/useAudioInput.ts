@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { AudioInputState } from '../types/audio';
 
-const ANALYSER_FFT_SIZE = 2048;
+const ANALYSER_FFT_SIZE = 4096;
 
 export function useAudioInput() {
   const [state, setState] = useState<AudioInputState>({

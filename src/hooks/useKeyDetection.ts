@@ -1,5 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { KeyInfo } from '../types/audio';
+import {
+  computeWinningKey,
+  isStrongEnough,
+  KEY_HISTORY_SIZE,
+  type KeyVote,
+  type CurrentKey,
+} from '../utils/keyDetectionHelpers';
 
 // Essentia types
 type EssentiaInstance = {
@@ -42,8 +49,9 @@ async function loadEssentia(): Promise<EssentiaInstance> {
   return essentiaLoading;
 }
 
-const BUFFER_DURATION = 3; // seconds
-const ANALYSIS_INTERVAL = 2000; // ms
+// Configuration
+const BUFFER_DURATION = 4; // seconds of audio to analyze
+const ANALYSIS_INTERVAL = 3000; // analyze every 3 seconds
 
 export function useKeyDetection(
   analyserNode: AnalyserNode | null,
@@ -61,6 +69,8 @@ export function useKeyDetection(
   const intervalRef = useRef<number | null>(null);
   const rafIdRef = useRef<number | null>(null);
   const essentiaRef = useRef<EssentiaInstance | null>(null);
+  const keyHistoryRef = useRef<KeyVote[]>([]);
+  const currentKeyRef = useRef<CurrentKey | null>(null);
 
   const analyzeKey = useCallback(async () => {
     if (!essentiaRef.current || audioBufferRef.current.length === 0) {
@@ -78,22 +88,38 @@ export function useKeyDetection(
       }
 
       // Analyze key using Essentia
-      // Convert Float32Array to VectorFloat (required by Essentia.js WASM bindings)
       const vectorBuffer = essentiaRef.current.arrayToVector(combinedBuffer);
       const result = essentiaRef.current.KeyExtractor(vectorBuffer);
 
-      if (result && result.key) {
-        setKeyInfo({
+      // Only add to history if detection is strong enough
+      if (result && result.key && isStrongEnough(result.strength)) {
+        keyHistoryRef.current.push({
           key: result.key,
-          scale: result.scale as 'major' | 'minor',
+          scale: result.scale,
           strength: result.strength,
+          timestamp: Date.now(),
         });
+
+        // Keep history limited
+        while (keyHistoryRef.current.length > KEY_HISTORY_SIZE) {
+          keyHistoryRef.current.shift();
+        }
       }
 
-      // Clear buffer after analysis
+      // Compute winning key from vote history
+      const winningKey = computeWinningKey(
+        keyHistoryRef.current,
+        currentKeyRef.current
+      );
+      if (winningKey) {
+        currentKeyRef.current = { key: winningKey.key, scale: winningKey.scale };
+        setKeyInfo(winningKey);
+      }
+
+      // Clear audio buffer after analysis (but keep key history)
       audioBufferRef.current = [];
-    } catch (err) {
-      console.error('Key detection error:', err);
+    } catch {
+      // Silently ignore key detection errors to prevent log spam
     }
   }, []);
 
@@ -101,6 +127,8 @@ export function useKeyDetection(
     if (!analyserNode || !isActive) {
       setKeyInfo({ key: '', scale: '', strength: 0 });
       audioBufferRef.current = [];
+      keyHistoryRef.current = [];
+      currentKeyRef.current = null;
       return;
     }
 
@@ -126,26 +154,34 @@ export function useKeyDetection(
       const buffer = new Float32Array(bufferSize);
       const maxBufferFrames = Math.ceil((BUFFER_DURATION * sampleRate) / bufferSize);
 
-      // Collect audio data
+      // Collect audio data at a slower rate to reduce memory pressure
+      let lastCollectTime = 0;
+      const COLLECT_INTERVAL = 50; // Only collect every 50ms instead of every frame
+
       const collectAudio = () => {
         if (!isMounted || !analyserNode) return;
 
-        analyserNode.getFloatTimeDomainData(buffer);
+        const now = performance.now();
+        if (now - lastCollectTime >= COLLECT_INTERVAL) {
+          analyserNode.getFloatTimeDomainData(buffer);
 
-        // Check for signal
-        let sum = 0;
-        for (let i = 0; i < buffer.length; i++) {
-          sum += buffer[i] * buffer[i];
-        }
-        const rms = Math.sqrt(sum / buffer.length);
-
-        if (rms > 0.005) {
-          audioBufferRef.current.push(new Float32Array(buffer));
-
-          // Keep buffer limited
-          while (audioBufferRef.current.length > maxBufferFrames) {
-            audioBufferRef.current.shift();
+          // Check for signal
+          let sum = 0;
+          for (let i = 0; i < buffer.length; i++) {
+            sum += buffer[i] * buffer[i];
           }
+          const rms = Math.sqrt(sum / buffer.length);
+
+          if (rms > 0.005) {
+            audioBufferRef.current.push(new Float32Array(buffer));
+
+            // Keep buffer limited
+            while (audioBufferRef.current.length > maxBufferFrames) {
+              audioBufferRef.current.shift();
+            }
+          }
+
+          lastCollectTime = now;
         }
 
         rafIdRef.current = requestAnimationFrame(collectAudio);
@@ -170,6 +206,7 @@ export function useKeyDetection(
         intervalRef.current = null;
       }
       audioBufferRef.current = [];
+      keyHistoryRef.current = [];
     };
   }, [analyserNode, isActive, analyzeKey]);
 

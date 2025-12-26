@@ -7,7 +7,7 @@ export default defineConfig({
   plugins: [react()],
   base: '/web-audio-fun/',
   test: {
-    environment: 'jsdom',
+    environment: 'happy-dom',
     globals: true,
   },
 })
